@@ -1,12 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import ManagerDashboard from './pages/ManagerDashboard';
+import StaffDashboard from './pages/StaffDashboard';
 
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Unauthorized from './pages/Unauthorized';
 import Register from './pages/Register';
+import Products from './pages/Products';
 
 function App() {
   return (
@@ -22,11 +24,20 @@ function App() {
           <Route path="/register" element={<Register />} />
 
           {/* Logged-in users (any role) */}
+        
           <Route
-            path="/dashboard"
+            path="/manager/dashboard"
             element={
-              <ProtectedRoute>
-                <Dashboard />
+              <ProtectedRoute allowedRoles={['manager']}>
+                <ManagerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/staff/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['staff']}>
+                <StaffDashboard />
               </ProtectedRoute>
             }
           />
@@ -40,6 +51,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/products"
+            element={
+              <ProtectedRoute>
+                <Products />
+              </ProtectedRoute>} 
+          />
+
 
           {/* Catch-all for unknown routes */}
           <Route path="*" element={<Navigate to="/login" replace />} />

@@ -49,8 +49,11 @@ const Register = () => {
 
       if (data.role === 'admin') {
         navigate('/admin/dashboard');
-      } else {
-        navigate('/dashboard');
+      } else if(data.role === 'manager') {
+        navigate('/manager/dashboard');
+      }
+      else{
+        navigate('/staff/dashboard');
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');

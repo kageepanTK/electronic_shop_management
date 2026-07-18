@@ -17,11 +17,16 @@ const styles = {
   main: {
     marginLeft: '220px',
     flex: 1,
+    width: '100%',
     minHeight: '100vh',
     backgroundColor: '#f4f4f4',
+    boxSizing: 'border-box',
   },
   content: {
     padding: '24px',
+    width: '100%',
+    boxSizing: 'border-box',
+    
   },
 };
 

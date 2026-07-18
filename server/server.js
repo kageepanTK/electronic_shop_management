@@ -1,5 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const productRoutes = require('./routes/productRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -11,8 +14,10 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use('/api/categories', categoryRoutes);
 
 app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
 
 app.get('/', (req, res) => {
   res.send('API is running...');
@@ -20,7 +25,7 @@ app.get('/', (req, res) => {
 
 // Sync models with MySQL (creates tables automatically)
 sequelize
-  .sync()
+  .sync({ alter: true })
   .then(() => console.log('MySQL connected and synced'))
   .catch((err) => console.log('DB connection error:', err));
 
