@@ -5,6 +5,10 @@ const categoryRoutes = require('./routes/categoryRoutes');
 
 const dotenv = require('dotenv');
 
+const saleRoutes = require('./routes/saleRoutes');
+const customerRoutes = require('./routes/customerRoutes');
+
+
 dotenv.config();
 
 const sequelize = require('./config/db');
@@ -31,3 +35,5 @@ sequelize
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.use('/api/sales', saleRoutes);
+app.use('/api/customers', customerRoutes);

@@ -9,6 +9,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import Unauthorized from './pages/Unauthorized';
 import Register from './pages/Register';
 import Products from './pages/Products';
+import NewSale from './pages/NewSale';
+import SalesHistory from './pages/SalesHistory';
 
 function App() {
   return (
@@ -58,6 +60,22 @@ function App() {
                 <Products />
               </ProtectedRoute>} 
           />
+          <Route 
+            path="/sales/new"
+            element={
+              <ProtectedRoute> 
+                <NewSale />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/sales" 
+            element={
+              <ProtectedRoute>
+                <SalesHistory />
+              </ProtectedRoute>
+              } 
+            />
 
 
           {/* Catch-all for unknown routes */}
