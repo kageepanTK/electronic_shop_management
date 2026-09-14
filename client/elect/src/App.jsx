@@ -11,6 +11,12 @@ import Register from './pages/Register';
 import Products from './pages/Products';
 import NewSale from './pages/NewSale';
 import SalesHistory from './pages/SalesHistory';
+import Customers from './pages/Customers';
+import Suppliers from './pages/Suppliers';
+import Expenses from './pages/Expenses';
+import Reports from './pages/Reports';
+import ManageStaff from './pages/ManageStaff';
+
 
 function App() {
   return (
@@ -76,6 +82,26 @@ function App() {
               </ProtectedRoute>
               } 
             />
+
+          <Route 
+            path="/customers" 
+            element={
+              <ProtectedRoute>
+                <Customers />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/suppliers" 
+            element={
+              <ProtectedRoute 
+                allowedRoles={['admin','manager']}>
+                  <Suppliers />
+              </ProtectedRoute>} 
+          />
+          <Route path="/expenses" element={<ProtectedRoute allowedRoles={['admin','manager']}><Expenses /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute allowedRoles={['admin','manager']}><Reports /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><ManageStaff /></ProtectedRoute>} />
 
 
           {/* Catch-all for unknown routes */}

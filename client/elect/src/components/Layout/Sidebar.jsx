@@ -8,6 +8,9 @@ import {
   Truck,
   BarChart3,
   UserCog,
+  Wallet,
+  ClipboardList,
+  Receipt,
   Zap,
 } from 'lucide-react';
 
@@ -25,9 +28,12 @@ const Sidebar = () => {
   const menuItems = [
     { label: 'Dashboard', path: dashboardPath, icon: LayoutDashboard, roles: ['admin', 'manager', 'staff'] },
     { label: 'Products', path: '/products', icon: Package, roles: ['admin', 'manager', 'staff'] },
-    { label: 'Sales / Billing', path: '/sales', icon: ShoppingCart, roles: ['admin', 'manager', 'staff'] },
+    { label: 'Categories', path: '/categories', icon: ClipboardList, roles: ['admin', 'manager'] },
+    { label: 'All Sales', path: '/sales', icon: Receipt, roles: ['admin', 'manager', 'staff'] },
+    { label: 'New Sale', path: '/sales/new', icon: ShoppingCart, roles: ['admin', 'manager', 'staff'] },
     { label: 'Customers', path: '/customers', icon: Users, roles: ['admin', 'manager', 'staff'] },
     { label: 'Suppliers', path: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
+    { label: 'Expenses', path: '/expenses', icon: Wallet, roles: ['admin', 'manager'] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['admin', 'manager'] },
     { label: 'Manage Staff', path: '/admin/users', icon: UserCog, roles: ['admin'] },
   ];
@@ -91,9 +97,9 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    padding: '12px 20px',
+    padding: '11px 20px',
     textDecoration: 'none',
-    fontSize: '14px',
+    fontSize: '13px',
     borderRadius: '8px',
     margin: '2px 10px',
     transition: 'background-color 0.15s',
