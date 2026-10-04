@@ -17,6 +17,10 @@ const ProductFormModal = ({ onClose, onSuccess }) => {
     stockQty: '',
     lowStockAlert: '5',
     image: null,
+    allowLooseSales: false,
+    bagSize: '',
+    looseUnit: '',
+    loosePrice: '',
   });
 
   useEffect(() => {
@@ -24,7 +28,8 @@ const ProductFormModal = ({ onClose, onSuccess }) => {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value, type, checked } = e.target;
+    setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
   };
 
   const handleImageChange = (e) => {
@@ -41,6 +46,11 @@ const ProductFormModal = ({ onClose, onSuccess }) => {
 
     if (!formData.name || !formData.categoryId || !formData.sellingPrice) {
       setError('Please fill in name, category, and selling price');
+      return;
+    }
+
+    if (formData.allowLooseSales && (!formData.bagSize || !formData.looseUnit)) {
+      setError('Please provide bag size and loose unit for loose sales');
       return;
     }
 
@@ -77,7 +87,6 @@ const ProductFormModal = ({ onClose, onSuccess }) => {
 
         {error && <p style={{ color: 'red', fontSize: '13px' }}>{error}</p>}
 
-        {/* Image upload */}
         <label style={styles.imageUpload}>
           {preview ? (
             <img src={preview} alt="preview" style={styles.previewImg} />
@@ -129,6 +138,63 @@ const ProductFormModal = ({ onClose, onSuccess }) => {
           </div>
         </div>
 
+        <div style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            id="allowLooseSales"
+            name="allowLooseSales"
+            checked={formData.allowLooseSales}
+            onChange={handleChange}
+          />
+          <label htmlFor="allowLooseSales" style={{ fontSize: '13px', cursor: 'pointer' }}>
+            Allow loose sales
+          </label>
+        </div>
+
+        {formData.allowLooseSales && (
+          <div style={styles.looseSection}>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ ...styles.field, flex: 1 }}>
+                <label style={styles.label}>Bag Size (e.g. 50)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="bagSize"
+                  value={formData.bagSize}
+                  onChange={handleChange}
+                  style={styles.input}
+                  placeholder="50"
+                />
+              </div>
+              <div style={{ ...styles.field, flex: 1 }}>
+                <label style={styles.label}>Loose Unit (e.g. kg)</label>
+                <input
+                  name="looseUnit"
+                  value={formData.looseUnit}
+                  onChange={handleChange}
+                  style={styles.input}
+                  placeholder="kg"
+                />
+              </div>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Loose Price (per unit)</label>
+              <input
+                type="number"
+                step="0.01"
+                name="loosePrice"
+                value={formData.loosePrice}
+                onChange={handleChange}
+                style={styles.input}
+                placeholder="Price per kg/litre/etc"
+              />
+            </div>
+            <p style={styles.hint}>
+              Opening 1 bag will add {formData.bagSize || '—'} {formData.looseUnit || 'unit'} to loose stock.
+            </p>
+          </div>
+        )}
+
         <button type="submit" disabled={loading} style={styles.submitBtn}>
           {loading ? 'Saving...' : 'Save Product'}
         </button>
@@ -146,7 +212,7 @@ const styles = {
   },
   modal: {
     backgroundColor: '#fff', borderRadius: '12px', padding: '20px',
-    width: '360px', maxHeight: '90vh', overflowY: 'auto',
+    width: '380px', maxHeight: '90vh', overflowY: 'auto',
   },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' },
   closeBtn: {
@@ -165,6 +231,17 @@ const styles = {
   input: {
     width: '100%', padding: '8px 10px', borderRadius: '6px',
     border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '14px',
+  },
+  checkboxRow: {
+    display: 'flex', alignItems: 'center', gap: '8px',
+    marginBottom: '10px', padding: '8px 0', borderTop: '1px solid #f0f0f0',
+  },
+  looseSection: {
+    backgroundColor: '#f8f9fc', borderRadius: '8px', padding: '12px',
+    marginBottom: '12px', border: '1px solid #e8eaf0',
+  },
+  hint: {
+    fontSize: '11px', color: '#888', margin: '4px 0 0',
   },
   submitBtn: {
     width: '100%', padding: '10px', backgroundColor: '#2563eb', color: '#fff',

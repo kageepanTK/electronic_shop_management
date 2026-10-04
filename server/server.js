@@ -14,6 +14,7 @@ const customerRoutes = require('./routes/customerRoutes');
 const supplierRoutes = require('./routes/supplierRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const userRoutes = require('./routes/userRoutes');
+require('./models/StockHistory');
 
 // app must exist before any app.use() call
 const app = express();

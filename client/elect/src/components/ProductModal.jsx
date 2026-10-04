@@ -1,6 +1,31 @@
+import { useState } from 'react';
+import axios from '../utils/axiosConfig';
 import { X } from 'lucide-react';
 
-const ProductModal = ({ product, onClose }) => {
+
+const ProductModal = ({ product, onClose, onUpdated }) => {
+  const [currentProduct, setCurrentProduct] = useState(product);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const handleOpenBag = async () => {
+    setError('');
+    setMessage('');
+    setOpening(true);
+
+    try {
+      const { data } = await axios.post(`/api/products/${currentProduct.id}/open-bag`);
+      setCurrentProduct(data);
+      setMessage('Bag opened successfully — loose stock updated.');
+      if (onUpdated) onUpdated(data);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to open bag');
+    } finally {
+      setOpening(false);
+    }
+  };
+
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -9,10 +34,10 @@ const ProductModal = ({ product, onClose }) => {
         </button>
 
         <div style={styles.imageWrap}>
-          {product.imageUrl ? (
+          {currentProduct.imageUrl ? (
             <img
-              src={`http://localhost:5000${product.imageUrl}`}
-              alt={product.name}
+              src={`http://localhost:5000${currentProduct.imageUrl}`}
+              alt={currentProduct.name}
               style={styles.image}
             />
           ) : (
@@ -20,30 +45,80 @@ const ProductModal = ({ product, onClose }) => {
           )}
         </div>
 
-        <h3 style={{ margin: '16px 0 4px' }}>{product.name}</h3>
+        <h3 style={{ margin: '16px 0 4px' }}>{currentProduct.name}</h3>
         <p style={{ color: '#888', fontSize: '13px', margin: '0 0 16px' }}>
-          {product.brand} · {product.Category?.name || 'Uncategorized'}
+          {currentProduct.brand} · {currentProduct.Category?.name || 'Uncategorized'}
         </p>
 
         <div style={styles.detailRow}>
           <span style={styles.label}>Selling Price</span>
-          <span style={styles.value}>${product.sellingPrice}</span>
+          <span style={styles.value}>${currentProduct.sellingPrice}</span>
         </div>
         <div style={styles.detailRow}>
           <span style={styles.label}>Cost Price</span>
-          <span style={styles.value}>${product.costPrice}</span>
+          <span style={styles.value}>${currentProduct.costPrice}</span>
         </div>
-        <div style={styles.detailRow}>
-          <span style={styles.label}>Stock Balance</span>
-          <span
-            style={{
-              ...styles.value,
-              color: product.stockQty <= product.lowStockAlert ? '#dc2626' : '#16a34a',
-            }}
-          >
-            {product.stockQty} units
-          </span>
-        </div>
+
+        {currentProduct.allowLooseSales ? (
+          <>
+            <div style={styles.detailRow}>
+              <span style={styles.label}>Whole Bags</span>
+              <span
+                style={{
+                  ...styles.value,
+                  color: currentProduct.stockQty <= currentProduct.lowStockAlert ? '#dc2626' : '#16a34a',
+                }}
+              >
+                {currentProduct.stockQty}
+              </span>
+            </div>
+            <div style={styles.detailRow}>
+              <span style={styles.label}>Loose Stock</span>
+              <span style={styles.value}>
+                {currentProduct.looseStock} {currentProduct.looseUnit}
+              </span>
+            </div>
+            <div style={styles.detailRow}>
+              <span style={styles.label}>Loose Price</span>
+              <span style={styles.value}>
+                ${currentProduct.loosePrice || currentProduct.sellingPrice} / {currentProduct.looseUnit}
+              </span>
+            </div>
+            <div style={styles.detailRow}>
+              <span style={styles.label}>Bag Size</span>
+              <span style={styles.value}>
+                {currentProduct.bagSize} {currentProduct.looseUnit} per bag
+              </span>
+            </div>
+
+            {error && <p style={styles.errorText}>{error}</p>}
+            {message && <p style={styles.successText}>{message}</p>}
+
+            <button
+              style={styles.openBagBtn}
+              onClick={handleOpenBag}
+              disabled={opening || currentProduct.stockQty < 1}
+            >
+              {opening
+                ? 'Opening...'
+                : currentProduct.stockQty < 1
+                ? 'No Bags Available'
+                : 'Open 1 Bag → Add to Loose Stock'}
+            </button>
+          </>
+        ) : (
+          <div style={styles.detailRow}>
+            <span style={styles.label}>Stock Balance</span>
+            <span
+              style={{
+                ...styles.value,
+                color: currentProduct.stockQty <= currentProduct.lowStockAlert ? '#dc2626' : '#16a34a',
+              }}
+            >
+              {currentProduct.stockQty} units
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -81,6 +156,13 @@ const styles = {
   },
   label: { color: '#888' },
   value: { fontWeight: 'bold' },
+  errorText: { color: '#dc2626', fontSize: '12px', margin: '8px 0 0' },
+  successText: { color: '#16a34a', fontSize: '12px', margin: '8px 0 0' },
+  openBagBtn: {
+    width: '100%', padding: '10px', marginTop: '14px',
+    backgroundColor: '#2563eb', color: '#fff', border: 'none',
+    borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px',
+  },
 };
 
 export default ProductModal;

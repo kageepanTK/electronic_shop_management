@@ -9,7 +9,6 @@ import {
   BarChart3,
   UserCog,
   Wallet,
-  ClipboardList,
   Receipt,
   Zap,
 } from 'lucide-react';
@@ -28,7 +27,6 @@ const Sidebar = () => {
   const menuItems = [
     { label: 'Dashboard', path: dashboardPath, icon: LayoutDashboard, roles: ['admin', 'manager', 'staff'] },
     { label: 'Products', path: '/products', icon: Package, roles: ['admin', 'manager', 'staff'] },
-    { label: 'Categories', path: '/categories', icon: ClipboardList, roles: ['admin', 'manager'] },
     { label: 'All Sales', path: '/sales', icon: Receipt, roles: ['admin', 'manager', 'staff'] },
     { label: 'New Sale', path: '/sales/new', icon: ShoppingCart, roles: ['admin', 'manager', 'staff'] },
     { label: 'Customers', path: '/customers', icon: Users, roles: ['admin', 'manager', 'staff'] },

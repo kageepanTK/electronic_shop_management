@@ -8,6 +8,7 @@ const SaleItem = sequelize.define('SaleItem', {
   quantity: { type: DataTypes.INTEGER, allowNull: false },
   unitPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   subtotal: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  saleType: { type: DataTypes.ENUM('bag', 'loose'), defaultValue: 'bag' },
 });
 
 // Associations

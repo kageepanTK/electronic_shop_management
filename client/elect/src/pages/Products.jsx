@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, ChevronDown, Search } from 'lucide-react';
 import axios from '../utils/axiosConfig';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../components/Layout/DashboardLayout';
@@ -14,6 +14,12 @@ const Products = () => {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategoryName, setActiveCategoryName] = useState('All Categories');
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -29,11 +35,11 @@ const Products = () => {
     }
   };
 
-  const fetchProducts = async (categoryId = 'all') => {
+  const fetchProducts = async (categoryId = 'all', search = '') => {
     setLoading(true);
     setError('');
     try {
-      const { data } = await axios.get('/api/products', { params: { categoryId } });
+      const { data } = await axios.get('/api/products', { params: { categoryId, search } });
       setProducts(data);
     } catch (err) {
       console.error('Failed to fetch products:', err);
@@ -49,9 +55,30 @@ const Products = () => {
     fetchProducts();
   }, []);
 
-  const handleCategoryClick = (id) => {
+  // Debounced search
+  useEffect(() => {
+    const delay = setTimeout(() => {
+      fetchProducts(activeCategory, searchTerm);
+    }, 300);
+    return () => clearTimeout(delay);
+  }, [searchTerm]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowCategoryDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleCategorySelect = (id, name) => {
     setActiveCategory(id);
-    fetchProducts(id);
+    setActiveCategoryName(name);
+    setShowCategoryDropdown(false);
+    fetchProducts(id, searchTerm);
   };
 
   return (
@@ -65,39 +92,68 @@ const Products = () => {
         )}
       </div>
 
-      {/* Category pills */}
-      <div style={styles.pillRow}>
+      {/* Search bar */}
+      <div style={styles.searchBox}>
+        <Search size={16} color="#888" />
+        <input
+          placeholder="Search products..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={styles.searchInput}
+        />
+      </div>
+
+      {/* Category dropdown button, below search */}
+      <div style={styles.dropdownWrap} ref={dropdownRef}>
         <button
-          onClick={() => handleCategoryClick('all')}
-          style={{ ...styles.pill, ...(activeCategory === 'all' ? styles.pillActive : {}) }}
+          style={styles.categoryBtn}
+          onClick={() => setShowCategoryDropdown((prev) => !prev)}
         >
-          All
+          {activeCategoryName}
+          <ChevronDown size={14} />
         </button>
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => handleCategoryClick(cat.id)}
-            style={{ ...styles.pill, ...(activeCategory === cat.id ? styles.pillActive : {}) }}
-          >
-            {cat.name}
-          </button>
-        ))}
-        {canAdd && (
-          <button onClick={() => setShowCategoryModal(true)} style={styles.addCategoryPill}>
-            <Plus size={14} /> Add Category
-          </button>
+
+        {showCategoryDropdown && (
+          <div style={styles.dropdownMenu}>
+            <div
+              style={{ ...styles.dropdownItem, ...(activeCategory === 'all' ? styles.dropdownItemActive : {}) }}
+              onClick={() => handleCategorySelect('all', 'All Categories')}
+            >
+              All Categories
+            </div>
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                style={{ ...styles.dropdownItem, ...(activeCategory === cat.id ? styles.dropdownItemActive : {}) }}
+                onClick={() => handleCategorySelect(cat.id, cat.name)}
+              >
+                {cat.name}
+              </div>
+            ))}
+            {canAdd && (
+              <div
+                style={styles.dropdownAddItem}
+                onClick={() => {
+                  setShowCategoryDropdown(false);
+                  setShowCategoryModal(true);
+                }}
+              >
+                <Plus size={13} /> Add New Category
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {error && <p style={{ color: 'red', fontSize: '14px' }}>{error}</p>}
+      {error && <p style={{ color: 'red', fontSize: '14px', marginTop: '16px' }}>{error}</p>}
 
       {/* Product grid */}
       {loading ? (
-        <p>Loading...</p>
+        <p style={{ marginTop: '16px' }}>Loading...</p>
       ) : products.length === 0 ? (
-        <p style={{ color: '#888' }}>No products found in this category.</p>
+        <p style={{ color: '#888', marginTop: '16px' }}>No products found.</p>
       ) : (
-        <div style={styles.grid}>
+        <div style={{ ...styles.grid, marginTop: '16px' }}>
           {products.map((product) => (
             <div key={product.id} style={styles.card} onClick={() => setSelectedProduct(product)}>
               <div style={styles.imageWrap}>
@@ -120,20 +176,17 @@ const Products = () => {
         </div>
       )}
 
-      {/* View product details */}
       {selectedProduct && (
         <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
       )}
 
-      {/* Add product form */}
       {showAddModal && (
         <ProductFormModal
           onClose={() => setShowAddModal(false)}
-          onSuccess={() => fetchProducts(activeCategory)}
+          onSuccess={() => fetchProducts(activeCategory, searchTerm)}
         />
       )}
 
-      {/* Add category form */}
       {showCategoryModal && (
         <CategoryFormModal
           onClose={() => setShowCategoryModal(false)}
@@ -145,55 +198,40 @@ const Products = () => {
 };
 
 const styles = {
-  headerRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
+  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' },
   addBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '8px 16px',
-    backgroundColor: '#2563eb',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '13px',
+    display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px',
+    backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
   },
-  pillRow: {
-    display: 'flex',
-    gap: '8px',
-    marginBottom: '20px',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+  searchBox: {
+    display: 'flex', alignItems: 'center', gap: '8px',
+    backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+    padding: '10px 14px', marginBottom: '10px',
   },
-  pill: {
-    padding: '8px 16px',
-    borderRadius: '20px',
-    border: '1px solid #ddd',
-    backgroundColor: '#fff',
-    fontSize: '13px',
-    cursor: 'pointer',
+  searchInput: { border: 'none', outline: 'none', flex: 1, fontSize: '14px' },
+  dropdownWrap: { position: 'relative', display: 'inline-block' },
+  categoryBtn: {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    padding: '8px 14px', borderRadius: '8px', border: '1px solid #ddd',
+    backgroundColor: '#fff', fontSize: '13px', cursor: 'pointer', color: '#333',
   },
-  pillActive: {
-    backgroundColor: '#161a2e',
-    color: '#fff',
-    border: '1px solid #161a2e',
+  dropdownMenu: {
+    position: 'absolute', top: '42px', left: 0,
+    backgroundColor: '#fff', border: '1px solid #eee', borderRadius: '8px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.08)', minWidth: '200px',
+    zIndex: 50, overflow: 'hidden',
   },
-  addCategoryPill: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '8px 16px',
-    borderRadius: '20px',
-    border: '1px dashed #999',
-    backgroundColor: '#fff',
-    fontSize: '13px',
-    cursor: 'pointer',
-    color: '#555',
+  dropdownItem: {
+    padding: '10px 14px', fontSize: '13px', cursor: 'pointer',
+    borderBottom: '1px solid #f5f5f5',
+  },
+  dropdownItemActive: {
+    backgroundColor: '#161a2e', color: '#fff',
+  },
+  dropdownAddItem: {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    padding: '10px 14px', fontSize: '13px', cursor: 'pointer',
+    color: '#2563eb', fontWeight: 'bold',
   },
   grid: {
     display: 'grid',
@@ -201,42 +239,23 @@ const styles = {
     gap: '16px',
   },
   card: {
-    backgroundColor: '#fff',
-    border: '1px solid #eee',
-    borderRadius: '12px',
-    padding: '12px',
-    cursor: 'pointer',
-    textAlign: 'center',
-    position: 'relative',
+    backgroundColor: '#fff', border: '1px solid #eee', borderRadius: '12px',
+    padding: '12px', cursor: 'pointer', textAlign: 'center', position: 'relative',
   },
   imageWrap: {
-    width: '100%',
-    height: '120px',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    marginBottom: '10px',
-    backgroundColor: '#f4f4f4',
+    width: '100%', height: '120px', borderRadius: '8px',
+    overflow: 'hidden', marginBottom: '10px', backgroundColor: '#f4f4f4',
   },
   image: { width: '100%', height: '100%', objectFit: 'cover' },
   noImage: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#aaa',
-    fontSize: '12px',
+    width: '100%', height: '100%', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: '12px',
   },
   productName: { fontSize: '14px', fontWeight: 'bold', margin: 0 },
   lowStockBadge: {
-    position: 'absolute',
-    top: '8px',
-    right: '8px',
-    backgroundColor: '#fee2e2',
-    color: '#dc2626',
-    fontSize: '10px',
-    padding: '2px 8px',
-    borderRadius: '10px',
+    position: 'absolute', top: '8px', right: '8px',
+    backgroundColor: '#fee2e2', color: '#dc2626',
+    fontSize: '10px', padding: '2px 8px', borderRadius: '10px',
   },
 };
 

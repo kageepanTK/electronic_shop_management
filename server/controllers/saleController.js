@@ -27,35 +27,83 @@ exports.createSale = async (req, res) => {
     const saleItemsData = [];
 
     // Validate stock and calculate totals
-    for (const item of items) {
-      const product = await Product.findByPk(item.productId, { transaction: t });
+for (const item of items) {
+  const product = await Product.findByPk(item.productId, { transaction: t });
 
-      if (!product) {
-        await t.rollback();
-        return res.status(404).json({ message: `Product not found: ${item.productId}` });
-      }
+  if (!product) {
+    await t.rollback();
+    return res.status(404).json({ message: `Product not found: ${item.productId}` });
+  }
 
-      if (product.stockQty < item.quantity) {
-        await t.rollback();
-        return res.status(400).json({
-          message: `Insufficient stock for ${product.name}. Available: ${product.stockQty}`,
-        });
-      }
+  const saleType = item.saleType || 'bag'; // default to bag if not specified
 
-      const subtotal = product.sellingPrice * item.quantity;
-      totalAmount += parseFloat(subtotal);
-
-      saleItemsData.push({
-        productId: product.id,
-        quantity: item.quantity,
-        unitPrice: product.sellingPrice,
-        subtotal,
-      });
-
-      // Reduce stock
-      product.stockQty -= item.quantity;
-      await product.save({ transaction: t });
+  if (saleType === 'loose') {
+    if (!product.allowLooseSales) {
+      await t.rollback();
+      return res.status(400).json({ message: `${product.name} does not support loose sales` });
     }
+    if (parseFloat(product.looseStock) < item.quantity) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `Insufficient loose stock for ${product.name}. Available: ${product.looseStock}${product.looseUnit}`,
+      });
+    }
+
+    const unitPrice = product.loosePrice || product.sellingPrice;
+    const subtotal = unitPrice * item.quantity;
+    totalAmount += parseFloat(subtotal);
+
+    saleItemsData.push({
+      productId: product.id,
+      quantity: item.quantity,
+      unitPrice,
+      subtotal,
+      saleType: 'loose',
+    });
+
+    product.looseStock = parseFloat(product.looseStock) - parseFloat(item.quantity);
+    await product.save({ transaction: t });
+
+    await StockHistory.create({
+      productId: product.id,
+      userId: req.user.id,
+      type: 'loose_sale',
+      quantity: -item.quantity,
+      note: `Sold ${item.quantity}${product.looseUnit} loose`,
+    }, { transaction: t });
+
+  } else {
+    // existing whole-bag/unit sale logic
+    if (product.stockQty < item.quantity) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `Insufficient stock for ${product.name}. Available: ${product.stockQty}`,
+      });
+    }
+
+    const subtotal = product.sellingPrice * item.quantity;
+    totalAmount += parseFloat(subtotal);
+
+    saleItemsData.push({
+      productId: product.id,
+      quantity: item.quantity,
+      unitPrice: product.sellingPrice,
+      subtotal,
+      saleType: 'bag',
+    });
+
+    product.stockQty -= item.quantity;
+    await product.save({ transaction: t });
+
+    await StockHistory.create({
+      productId: product.id,
+      userId: req.user.id,
+      type: 'bag_sale',
+      quantity: -item.quantity,
+      note: `Sold ${item.quantity} unit(s)`,
+    }, { transaction: t });
+  }
+}
 
     const finalTotal = totalAmount - (discount || 0);
     const actualPaid = paidAmount !== undefined ? paidAmount : finalTotal;

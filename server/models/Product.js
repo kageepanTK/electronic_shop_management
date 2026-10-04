@@ -8,12 +8,20 @@ const Product = sequelize.define('Product', {
   brand: { type: DataTypes.STRING },
   costPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   sellingPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+
+  // Whole-unit stock (bags, boxes, pieces — whatever the base unit is)
   stockQty: { type: DataTypes.INTEGER, defaultValue: 0 },
   lowStockAlert: { type: DataTypes.INTEGER, defaultValue: 5 },
   imageUrl: { type: DataTypes.STRING },
+
+  // Loose sale support
+  allowLooseSales: { type: DataTypes.BOOLEAN, defaultValue: false },
+  bagSize: { type: DataTypes.DECIMAL(10, 3), allowNull: true },      // e.g. 50 (kg per bag)
+  looseUnit: { type: DataTypes.STRING, allowNull: true },             // e.g. "kg"
+  loosePrice: { type: DataTypes.DECIMAL(10, 2), allowNull: true },    // price per loose unit
+  looseStock: { type: DataTypes.DECIMAL(10, 3), defaultValue: 0 },    // current loose quantity available
 });
 
-// Associations
 Product.belongsTo(Category, { foreignKey: 'categoryId' });
 Category.hasMany(Product, { foreignKey: 'categoryId' });
 
