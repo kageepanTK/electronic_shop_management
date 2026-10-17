@@ -19,6 +19,8 @@ import ManageStaff from './pages/ManageStaff';
 import Loans from './pages/Loans';
 import NewLoan from './pages/NewLoan';
 import LoanDetail from './pages/LoanDetail';
+import AddProduct from './pages/AddProduct';
+
 
 
 function App() {
@@ -101,6 +103,15 @@ function App() {
                 allowedRoles={['admin','manager']}>
                   <Suppliers />
               </ProtectedRoute>} 
+          />
+          <Route
+            path="/products/add"
+            element={
+              <ProtectedRoute 
+                allowedRoles={['admin', 'manager']}>
+                <AddProduct />
+              </ProtectedRoute>
+            }
           />
           <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
           <Route path="/loans/new" element={<ProtectedRoute><NewLoan /></ProtectedRoute>} />

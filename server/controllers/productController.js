@@ -174,3 +174,79 @@ exports.getStockHistory = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+// POST /api/products/:id/restock
+// POST /api/products/:id/restock
+exports.restockProduct = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const qty = parseInt(req.body.quantity, 10);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 100000) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Quantity must be a whole number between 1 and 100000' });
+    }
+
+    // returns null if not provided, NaN if invalid, otherwise a 2-decimal number
+    const parsePrice = (v) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > 99999999.99) return NaN;
+      return Math.round(n * 100) / 100;
+    };
+
+    const buyPrice = parsePrice(req.body.buyPrice);
+    const newSelling = parsePrice(req.body.sellingPrice);
+
+    if (Number.isNaN(buyPrice)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Invalid buying price' });
+    }
+    if (newSelling !== null && (Number.isNaN(newSelling) || newSelling <= 0)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Selling price must be greater than 0' });
+    }
+
+    const product = await Product.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!product) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    const cents = (v) => Math.round(parseFloat(v) * 100);
+    const oldCost = parseFloat(product.costPrice);
+    const oldSell = parseFloat(product.sellingPrice);
+
+    product.stockQty += qty;
+
+    const parts = [`Restock +${qty}`];
+
+    if (buyPrice !== null) {
+      if (cents(buyPrice) !== cents(oldCost)) {
+        product.costPrice = buyPrice;
+        parts.push(`buy ${oldCost.toFixed(2)} -> ${buyPrice.toFixed(2)}`);
+      } else {
+        parts.push(`buy ${buyPrice.toFixed(2)}`);
+      }
+    }
+
+    if (newSelling !== null && cents(newSelling) !== cents(oldSell)) {
+      product.sellingPrice = newSelling;
+      parts.push(`sell ${oldSell.toFixed(2)} -> ${newSelling.toFixed(2)}`);
+    }
+
+    const userNote = (req.body.note || '').trim();
+    const note = (parts.join('; ') + (userNote ? ` | ${userNote}` : '')).slice(0, 255);
+
+    await product.save({ transaction: t });
+
+    await StockHistory.create(
+      { productId: product.id, userId: req.user.id, type: 'restock', quantity: qty, note },
+      { transaction: t }
+    );
+
+    await t.commit();
+    res.json(product);
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ message: error.message });
+  }
+};
