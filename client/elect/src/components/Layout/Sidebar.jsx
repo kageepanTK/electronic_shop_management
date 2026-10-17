@@ -10,6 +10,7 @@ import {
   UserCog,
   Wallet,
   Receipt,
+  Landmark,
   Zap,
 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ const Sidebar = () => {
     { label: 'Products', path: '/products', icon: Package, roles: ['admin', 'manager', 'staff'] },
     { label: 'All Sales', path: '/sales', icon: Receipt, roles: ['admin', 'manager', 'staff'] },
     { label: 'New Sale', path: '/sales/new', icon: ShoppingCart, roles: ['admin', 'manager', 'staff'] },
+    { label: 'Loans', path: '/loans', icon: Landmark, roles: ['admin', 'manager', 'staff'] },
     { label: 'Customers', path: '/customers', icon: Users, roles: ['admin', 'manager', 'staff'] },
     { label: 'Suppliers', path: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
     { label: 'Expenses', path: '/expenses', icon: Wallet, roles: ['admin', 'manager'] },

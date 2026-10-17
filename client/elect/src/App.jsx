@@ -16,6 +16,9 @@ import Suppliers from './pages/Suppliers';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
 import ManageStaff from './pages/ManageStaff';
+import Loans from './pages/Loans';
+import NewLoan from './pages/NewLoan';
+import LoanDetail from './pages/LoanDetail';
 
 
 function App() {
@@ -99,6 +102,9 @@ function App() {
                   <Suppliers />
               </ProtectedRoute>} 
           />
+          <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
+          <Route path="/loans/new" element={<ProtectedRoute><NewLoan /></ProtectedRoute>} />
+          <Route path="/loans/:id" element={<ProtectedRoute><LoanDetail /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute allowedRoles={['admin','manager']}><Expenses /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute allowedRoles={['admin','manager']}><Reports /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><ManageStaff /></ProtectedRoute>} />

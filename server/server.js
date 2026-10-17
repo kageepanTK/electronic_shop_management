@@ -14,10 +14,13 @@ const customerRoutes = require('./routes/customerRoutes');
 const supplierRoutes = require('./routes/supplierRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const userRoutes = require('./routes/userRoutes');
+const loanRoutes = require('./routes/loanRoutes');
 require('./models/StockHistory');
 
 // app must exist before any app.use() call
 const app = express();
+
+
 
 app.use(cors());
 app.use(express.json());
@@ -32,13 +35,14 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/loans', loanRoutes);
 
 app.get('/', (req, res) => {
   res.send('API is running...');
 });
 
 sequelize
-  .sync({ alter: true })
+  .sync()
   .then(() => console.log('MySQL connected and synced'))
   .catch((err) => console.log('DB connection error:', err));
 

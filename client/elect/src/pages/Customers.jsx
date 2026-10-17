@@ -1,14 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
 import axios from '../utils/axiosConfig';
+import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../components/Layout/DashboardLayout';
+import ConfirmModal from '../components/ConfirmModal';
+import { customerCode } from '../utils/format';
 
 const Customers = () => {
+  const { user } = useAuth();
+  const canManageLoans = user?.role === 'admin' || user?.role === 'manager';
+
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '' });
   const [error, setError] = useState('');
+  const [confirmToggle, setConfirmToggle] = useState(null); // customer object
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -38,6 +45,20 @@ const Customers = () => {
     }
   };
 
+  const toggleLoan = async () => {
+    setError('');
+    try {
+      await axios.put(`/api/customers/${confirmToggle.id}/loan-eligibility`, {
+        loanAllowed: !confirmToggle.loanAllowed,
+      });
+      fetchCustomers();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update loan eligibility');
+    } finally {
+      setConfirmToggle(null);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div style={styles.headerRow}>
@@ -47,6 +68,8 @@ const Customers = () => {
         </button>
       </div>
 
+      {error && !showModal && <p style={{ color: 'red', fontSize: '14px' }}>{error}</p>}
+
       <div style={styles.panel}>
         {loading ? <p>Loading...</p> : customers.length === 0 ? (
           <p style={{ color: '#888' }}>No customers yet.</p>
@@ -54,20 +77,33 @@ const Customers = () => {
           <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', color: '#888', borderBottom: '1px solid #eee' }}>
+                <th style={styles.th}>Customer ID</th>
                 <th style={styles.th}>Name</th>
                 <th style={styles.th}>Phone</th>
                 <th style={styles.th}>Email</th>
                 <th style={styles.th}>Due Amount</th>
+                <th style={styles.th}>Loan</th>
               </tr>
             </thead>
             <tbody>
               {customers.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #f0f0f0' }}>
+                  <td style={styles.td}>{customerCode(c.id)}</td>
                   <td style={styles.td}>{c.name}</td>
                   <td style={styles.td}>{c.phone || '-'}</td>
                   <td style={styles.td}>{c.email || '-'}</td>
                   <td style={{ ...styles.td, color: parseFloat(c.dueAmount) > 0 ? '#dc2626' : '#16a34a' }}>
                     ${c.dueAmount}
+                  </td>
+                  <td style={styles.td}>
+                    <span style={c.loanAllowed ? styles.allowed : styles.notAllowed}>
+                      {c.loanAllowed ? 'Allowed' : 'Not allowed'}
+                    </span>
+                    {canManageLoans && (
+                      <button style={styles.linkBtn} onClick={() => setConfirmToggle(c)}>
+                        {c.loanAllowed ? 'Disable' : 'Enable'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -94,6 +130,21 @@ const Customers = () => {
           </form>
         </div>
       )}
+
+      {confirmToggle && (
+        <ConfirmModal
+          title={confirmToggle.loanAllowed ? 'Disable Loans' : 'Allow Loans'}
+          message={
+            confirmToggle.loanAllowed
+              ? `Stop ${confirmToggle.name} from taking new loans?`
+              : `Allow ${confirmToggle.name} (${customerCode(confirmToggle.id)}) to apply for loans at checkout?`
+          }
+          confirmLabel={confirmToggle.loanAllowed ? 'Disable' : 'Allow'}
+          danger={confirmToggle.loanAllowed}
+          onConfirm={toggleLoan}
+          onCancel={() => setConfirmToggle(null)}
+        />
+      )}
     </DashboardLayout>
   );
 };
@@ -104,6 +155,9 @@ const styles = {
   panel: { backgroundColor: '#fff', border: '1px solid #eee', borderRadius: '12px', padding: '16px' },
   th: { padding: '8px 0' },
   td: { padding: '10px 0' },
+  allowed: { padding: '2px 10px', borderRadius: '6px', fontSize: '12px', backgroundColor: '#EAF3DE', color: '#3B6D11' },
+  notAllowed: { padding: '2px 10px', borderRadius: '6px', fontSize: '12px', backgroundColor: '#f1f1f1', color: '#777' },
+  linkBtn: { background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '12px', marginLeft: '8px' },
   overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   modal: { backgroundColor: '#fff', borderRadius: '12px', padding: '20px', width: '340px' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' },

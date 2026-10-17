@@ -8,6 +8,7 @@ const Customer = sequelize.define('Customer', {
   email: { type: DataTypes.STRING },
   address: { type: DataTypes.STRING },
   dueAmount: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  loanAllowed: { type: DataTypes.BOOLEAN, defaultValue: false },
 });
 
 module.exports = Customer;
