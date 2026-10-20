@@ -20,6 +20,7 @@ import Loans from './pages/Loans';
 import NewLoan from './pages/NewLoan';
 import LoanDetail from './pages/LoanDetail';
 import AddProduct from './pages/AddProduct';
+import RemoveProduct from './pages/RemoveProduct';
 
 
 
@@ -119,6 +120,14 @@ function App() {
           <Route path="/expenses" element={<ProtectedRoute allowedRoles={['admin','manager']}><Expenses /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute allowedRoles={['admin','manager']}><Reports /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><ManageStaff /></ProtectedRoute>} />
+          <Route
+  path="/products/remove"
+  element={
+    <ProtectedRoute allowedRoles={['admin']}>
+      <RemoveProduct />
+    </ProtectedRoute>
+  }
+/>
 
 
           {/* Catch-all for unknown routes */}

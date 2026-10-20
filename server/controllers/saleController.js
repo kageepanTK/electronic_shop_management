@@ -30,7 +30,7 @@ exports.createSale = async (req, res) => {
 for (const item of items) {
   const product = await Product.findByPk(item.productId, { transaction: t });
 
-  if (!product) {
+  if (!product || product.isRemoved) {
     await t.rollback();
     return res.status(404).json({ message: `Product not found: ${item.productId}` });
   }

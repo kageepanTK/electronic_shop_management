@@ -119,7 +119,7 @@ exports.createLoan = async (req, res) => {
       seen.add(item.productId);
 
       const product = await Product.findByPk(item.productId, { transaction: t });
-      if (!product) fail(404, `Product not found: ${item.productId}`);
+      if (!product || product.isRemoved) fail(404, `Product not found: ${item.productId}`);
 
       const price = toCents(product.sellingPrice); // server-side price only
       lines.push({
@@ -216,7 +216,7 @@ exports.activateLoan = async (req, res) => {
     // Re-check stock now and deduct it
     for (const item of items) {
       const product = await Product.findByPk(item.productId, { transaction: t, lock: t.LOCK.UPDATE });
-      if (!product) fail(400, 'A product in this loan no longer exists');
+     if (!product || product.isRemoved) fail(400, 'A product in this loan is no longer available');
       if (product.stockQty < item.quantity) {
         fail(400, `Insufficient stock for ${product.name}. Available: ${product.stockQty}`);
       }

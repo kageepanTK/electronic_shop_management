@@ -4,12 +4,14 @@ const StockHistory = require('../models/StockHistory');
 const User = require('../models/User');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
+const { Loan, LoanItem } = require('../models/Loan');
 
+// GET /api/products?categoryId=&search=
 // GET /api/products?categoryId=&search=
 exports.getProducts = async (req, res) => {
   try {
     const { categoryId, search } = req.query;
-    const where = {};
+    const where = { isRemoved: false };
 
     if (categoryId && categoryId !== 'all') where.categoryId = categoryId;
     if (search) where.name = { [Op.like]: `%${search}%` };
@@ -35,6 +37,107 @@ exports.getProductById = async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json(product);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// POST /api/products/:id/write-off  (remove a quantity of stock, keep the product)
+exports.writeOffStock = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const reason = (req.body.reason || '').trim();
+    const note = (req.body.note || '').trim().slice(0, 200);
+    const stockType = req.body.stockType === 'loose' ? 'loose' : 'whole';
+
+    if (!REMOVAL_REASONS.includes(reason)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Select a valid removal reason' });
+    }
+    if (reason === 'Other' && note.length < 3) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Please describe the reason' });
+    }
+
+    const product = await Product.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!product || product.isRemoved) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    let removedText;
+
+    if (stockType === 'loose') {
+      if (!product.allowLooseSales) {
+        await t.rollback();
+        return res.status(400).json({ message: 'This product does not have loose stock' });
+      }
+
+      // work in thousandths to avoid floating point errors
+      const milli = Math.round(Number(req.body.quantity) * 1000);
+      if (!Number.isFinite(milli) || milli < 1) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Enter a valid quantity to remove' });
+      }
+
+      const available = Math.round(parseFloat(product.looseStock) * 1000);
+      if (milli > available) {
+        await t.rollback();
+        return res.status(400).json({
+          message: `Only ${product.looseStock} ${product.looseUnit || ''} loose in stock`,
+        });
+      }
+
+      product.looseStock = ((available - milli) / 1000).toFixed(3);
+      removedText = `${milli / 1000} ${product.looseUnit || ''} loose`.trim();
+
+      await StockHistory.create(
+        {
+          productId: product.id,
+          userId: req.user.id,
+          type: 'adjustment',
+          quantity: -(milli / 1000),
+          note: `Stock removed (${note ? `${reason}: ${note}` : reason}): ${removedText}`.slice(0, 255),
+        },
+        { transaction: t }
+      );
+    } else {
+      const qty = Number(req.body.quantity);
+      if (!Number.isInteger(qty) || qty < 1) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Quantity must be a whole number of at least 1' });
+      }
+      if (qty > product.stockQty) {
+        await t.rollback();
+        return res.status(400).json({ message: `Only ${product.stockQty} in stock` });
+      }
+
+      product.stockQty -= qty;
+      removedText = `${qty} ${product.allowLooseSales ? 'whole bag(s)' : 'unit(s)'}`;
+
+      await StockHistory.create(
+        {
+          productId: product.id,
+          userId: req.user.id,
+          type: 'adjustment',
+          quantity: -qty,
+          note: `Stock removed (${note ? `${reason}: ${note}` : reason}): ${removedText}`.slice(0, 255),
+        },
+        { transaction: t }
+      );
+    }
+
+    await product.save({ transaction: t });
+    await t.commit();
+
+    res.json({
+      id: product.id,
+      name: product.name,
+      stockQty: product.stockQty,
+      looseStock: product.looseStock,
+      looseUnit: product.looseUnit,
+    });
+  } catch (error) {
+    await t.rollback();
     res.status(500).json({ message: error.message });
   }
 };
@@ -123,7 +226,7 @@ exports.openBag = async (req, res) => {
   try {
     const product = await Product.findByPk(req.params.id, { transaction: t });
 
-    if (!product) {
+    if (!product || product.isRemoved) {
       await t.rollback();
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -206,7 +309,7 @@ exports.restockProduct = async (req, res) => {
     }
 
     const product = await Product.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
-    if (!product) {
+       if (!product || product.isRemoved) {
       await t.rollback();
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -247,6 +350,118 @@ exports.restockProduct = async (req, res) => {
     res.json(product);
   } catch (error) {
     await t.rollback();
+    res.status(500).json({ message: error.message });
+  }
+};
+const REMOVAL_REASONS = [
+  'Damaged',
+  'Expired',
+  'Discontinued',
+  'Lost or stolen',
+  'Added by mistake',
+  'Returned to supplier',
+  'Other',
+];
+
+// POST /api/products/:id/remove
+exports.removeProduct = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const reason = (req.body.reason || '').trim();
+    const note = (req.body.note || '').trim().slice(0, 200);
+
+    if (!REMOVAL_REASONS.includes(reason)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Select a valid removal reason' });
+    }
+    if (reason === 'Other' && note.length < 3) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Please describe the reason' });
+    }
+
+    const product = await Product.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!product) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    if (product.isRemoved) {
+      await t.rollback();
+      return res.status(400).json({ message: 'This product has already been removed' });
+    }
+
+    // A product reserved by a loan that hasn't been checked out yet can't be removed
+    const reserved = await LoanItem.count({
+      where: { productId: product.id },
+      include: [{ model: Loan, where: { status: ['PENDING', 'APPROVED'] }, required: true }],
+      transaction: t,
+    });
+    if (reserved > 0) {
+      await t.rollback();
+      return res.status(400).json({
+        message: 'This product is in a loan application that is still pending or approved. Reject or complete that loan first.',
+      });
+    }
+
+    // Write off any remaining stock and log it
+    const wholeQty = product.stockQty;
+    const looseQty = parseFloat(product.looseStock) || 0;
+    const label = note ? `${reason}: ${note}` : reason;
+
+    if (wholeQty > 0) {
+      await StockHistory.create(
+        {
+          productId: product.id,
+          userId: req.user.id,
+          type: 'adjustment',
+          quantity: -wholeQty,
+          note: `Product removed, stock written off (${label})`.slice(0, 255),
+        },
+        { transaction: t }
+      );
+    }
+    if (looseQty > 0) {
+      await StockHistory.create(
+        {
+          productId: product.id,
+          userId: req.user.id,
+          type: 'adjustment',
+          quantity: -looseQty,
+          note: `Product removed, loose stock written off (${label})`.slice(0, 255),
+        },
+        { transaction: t }
+      );
+    }
+
+    product.stockQty = 0;
+    product.looseStock = 0;
+    product.isRemoved = true;
+    product.removedAt = new Date();
+    product.removalReason = reason;
+    product.removalNote = note || null;
+    product.removedById = req.user.id;
+    await product.save({ transaction: t });
+
+    await t.commit();
+    res.json({ message: 'Product removed', id: product.id });
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET /api/products/removed
+exports.getRemovedProducts = async (req, res) => {
+  try {
+    const products = await Product.findAll({
+      where: { isRemoved: true },
+      include: [
+        { model: Category, attributes: ['id', 'name'] },
+        { model: User, as: 'removedBy', attributes: ['name'] },
+      ],
+      order: [['removedAt', 'DESC']],
+    });
+    res.json(products);
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };

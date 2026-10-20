@@ -36,6 +36,7 @@ const Sidebar = () => {
       children: [
         { label: 'All Products', path: '/products', roles: ['admin', 'manager', 'staff'] },
         { label: 'Add Product', path: '/products/add', roles: ['admin', 'manager'] },
+        { label: 'Remove Product', path: '/products/remove', roles: ['admin'] },
       ],
     },
     { label: 'All Sales', path: '/sales', icon: Receipt, roles: ['admin', 'manager', 'staff'] },
