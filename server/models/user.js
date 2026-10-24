@@ -28,6 +28,14 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+    monthlySalary: { 
+      type: DataTypes.DECIMAL(10, 2), 
+      allowNull: false, defaultValue: 0 
+    },
+  payDay: {
+     type: DataTypes.INTEGER, 
+     allowNull: false, defaultValue: 25 
+    },
 });
 
 module.exports = User;

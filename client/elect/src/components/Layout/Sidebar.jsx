@@ -46,7 +46,7 @@ const Sidebar = () => {
     { label: 'Suppliers', path: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
     { label: 'Expenses', path: '/expenses', icon: Wallet, roles: ['admin', 'manager'] },
     { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['admin', 'manager'] },
-    { label: 'Manage Staff', path: '/admin/users', icon: UserCog, roles: ['admin'] },
+    { label: 'Staff & Payroll', path: '/admin/users', icon: UserCog, roles: ['admin'] },
   ];
 
   const visibleItems = menuItems
