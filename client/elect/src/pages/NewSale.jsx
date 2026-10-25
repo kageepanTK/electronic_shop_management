@@ -11,7 +11,7 @@ import { customerCode, money } from '../utils/format';
 const METHODS = [
   { value: 'cash', label: 'Cash', icon: Banknote },
   { value: 'card', label: 'Card', icon: CreditCard },
-  { value: 'credit', label: 'Credit (pay later)', icon: Wallet },
+  // { value: 'credit', label: 'Credit (pay later)', icon: Wallet },
   { value: 'loan', label: 'Loan (needs approval)', icon: Landmark, loanOnly: true },
 ];
 
@@ -32,7 +32,7 @@ const NewSale = () => {
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [discount, setDiscount] = useState('');
-  const [paidAmount, setPaidAmount] = useState('');
+  // const [paidAmount, setPaidAmount] = useState('');
   const [loanDown, setLoanDown] = useState('');
   const [loanInstallments, setLoanInstallments] = useState(6);
 
@@ -159,32 +159,25 @@ const NewSale = () => {
   };
 
   const submitSale = async () => {
-    if (discountValue < 0 || discountValue > subtotal) throw new Error("Discount can't be more than the subtotal");
-    if (total <= 0) throw new Error('Total must be greater than 0');
+  if (discountValue < 0 || discountValue > subtotal) throw new Error("Discount can't be more than the subtotal");
+  if (total <= 0) throw new Error('Total must be greater than 0');
 
-    let paid = total; // cash and card are paid in full
-    if (paymentMethod === 'credit') {
-      paid = parseFloat(paidAmount) || 0; // blank = nothing paid yet
-      if (paid < 0 || paid > total) throw new Error('Amount paid must be between 0 and the total');
-    }
+  const { data } = await axios.post('/api/sales', {
+    items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+    customerId: selectedCustomer?.id || null,
+    customerName: selectedCustomer?.name || 'Walk-in Customer',
+    discount: discountValue,
+    paidAmount: total, // cash and card are always paid in full
+    paymentMethod,
+  });
 
-    const { data } = await axios.post('/api/sales', {
-      items: cart.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-      customerId: selectedCustomer?.id || null,
-      customerName: selectedCustomer?.name || 'Walk-in Customer',
-      discount: discountValue,
-      paidAmount: paid,
-      paymentMethod,
-    });
-
-    setSuccess(data);
-    setCart([]);
-    setSelectedCustomer(null);
-    setDiscount('');
-    setPaidAmount('');
-    setPaymentMethod('cash');
-    fetchAllProducts(); // refresh stock numbers
-  };
+  setSuccess(data);
+  setCart([]);
+  setSelectedCustomer(null);
+  setDiscount('');
+  setPaymentMethod('cash');
+  fetchAllProducts();
+};
 
   const handleSubmit = async () => {
     setError('');
@@ -502,20 +495,6 @@ const NewSale = () => {
                   <span style={styles.suffix}>$</span>
                 </div>
                 <p style={styles.hint}>Enter discount amount (optional).</p>
-
-                {paymentMethod === 'credit' && (
-                  <>
-                    <label style={styles.label}>Amount paid now</label>
-                    <div style={styles.inputGroup}>
-                      <input
-                        type="number" min="0" placeholder="0.00 (leave blank if nothing paid)"
-                        value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)}
-                        style={styles.groupInput}
-                      />
-                      <span style={styles.suffix}>$</span>
-                    </div>
-                  </>
-                )}
               </>
             )}
           </div>

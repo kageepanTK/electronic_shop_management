@@ -11,6 +11,7 @@ const User = require('../models/User');
 // ---------- helpers ----------
 const toCents = (v) => Math.round(parseFloat(v) * 100);
 const fromCents = (c) => (c / 100).toFixed(2);
+const VALID_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ACTIVE', 'OVERDUE', 'PAID'];
 
 const fail = (status, message) => {
   const e = new Error(message);
@@ -47,15 +48,28 @@ const refreshOverdue = async () => {
 };
 
 // ---------- GET /api/loans?status= ----------
+// ---------- GET /api/loans?status=PENDING  or  ?status=ACTIVE,OVERDUE ----------
 exports.getLoans = async (req, res) => {
   try {
     await refreshOverdue();
+
     const where = {};
-    if (req.query.status) where.status = req.query.status.toUpperCase();
+    if (req.query.status) {
+      const list = String(req.query.status)
+        .split(',')
+        .map((s) => s.trim().toUpperCase())
+        .filter((s) => VALID_STATUSES.includes(s));
+      if (list.length === 0) fail(400, 'Invalid status filter');
+      where.status = list;
+    }
 
     const loans = await Loan.findAll({
       where,
-      include: [{ model: Customer, attributes: ['id', 'name', 'phone'] }],
+      include: [
+        { model: Customer, attributes: ['id', 'name', 'phone'] },
+        { model: User, as: 'createdBy', attributes: ['name'] },
+        { model: LoanItem, as: 'items', attributes: ['id', 'quantity'] },
+      ],
       order: [['createdAt', 'DESC']],
     });
     res.json(loans);
@@ -179,9 +193,12 @@ exports.approveLoan = async (req, res) => {
 };
 
 // ---------- PUT /api/loans/:id/reject  (admin only, enforced in route) ----------
+// ---------- PUT /api/loans/:id/reject  (admin/manager only, enforced in route) ----------
 exports.rejectLoan = async (req, res) => {
   try {
-    const reason = (req.body.reason || '').trim().slice(0, 255) || null;
+    const reason = String(req.body.reason || '').trim().slice(0, 255);
+    if (reason.length < 3) fail(400, 'Please enter a reason for rejection');
+
     const [updated] = await Loan.update(
       { status: 'REJECTED', reviewedById: req.user.id, reviewedAt: new Date(), rejectionReason: reason },
       { where: { id: req.params.id, status: 'PENDING' } }
@@ -192,6 +209,48 @@ exports.rejectLoan = async (req, res) => {
       fail(400, `Only PENDING applications can be rejected (current status: ${exists.status})`);
     }
     res.json({ message: 'Loan rejected' });
+  } catch (err) {
+    sendError(res, err);
+  }
+};
+// ---------- GET /api/loans/summary ----------
+exports.getLoanSummary = async (req, res) => {
+  try {
+    await refreshOverdue();
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [approvedToday, openLoans, grouped] = await Promise.all([
+      Loan.count({
+        where: {
+          reviewedAt: { [Op.gte]: startOfToday },
+          status: ['APPROVED', 'ACTIVE', 'OVERDUE', 'PAID'],
+        },
+      }),
+      Loan.findAll({
+        attributes: ['outstandingBalance'],
+        where: { status: ['ACTIVE', 'OVERDUE'] },
+        raw: true,
+      }),
+      Loan.findAll({
+        attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+        group: ['status'],
+        raw: true,
+      }),
+    ]);
+
+    const counts = {};
+    grouped.forEach((r) => { counts[r.status] = Number(r.n); });
+
+    const outstandingCents = openLoans.reduce((s, r) => s + toCents(r.outstandingBalance), 0);
+
+    res.json({
+      awaitingApproval: counts.PENDING || 0,
+      approvedToday,
+      outstanding: fromCents(outstandingCents),
+      counts,
+    });
   } catch (err) {
     sendError(res, err);
   }

@@ -3,6 +3,8 @@ const Sale = require('../models/Sale');
 const SaleItem = require('../models/SaleItem');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
+const StockHistory = require('../models/StockHistory');
+
 
 // POST /api/sales
 exports.createSale = async (req, res) => {
@@ -21,6 +23,12 @@ exports.createSale = async (req, res) => {
     if (!items || items.length === 0) {
       await t.rollback();
       return res.status(400).json({ message: 'No items in sale' });
+    }
+    if (!['cash', 'card'].includes(paymentMethod)) {
+      await t.rollback();
+      return res.status(400).json({
+        message: 'Payment method must be cash or card. Use a loan for pay-later purchases.',
+      });
     }
 
     let totalAmount = 0;
@@ -106,7 +114,7 @@ for (const item of items) {
 }
 
     const finalTotal = totalAmount - (discount || 0);
-    const actualPaid = paidAmount !== undefined ? paidAmount : finalTotal;
+    const actualPaid = finalTotal; // cash and card are always paid in full
 
     let paymentStatus = 'paid';
     if (actualPaid <= 0) paymentStatus = 'unpaid';

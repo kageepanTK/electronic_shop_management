@@ -262,8 +262,7 @@ const LoanDetail = () => {
         <div style={styles.overlay} onClick={() => setShowReject(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 8px' }}>Reject Application</h3>
-            <p style={{ ...styles.muted, marginBottom: '10px' }}>Reason (optional)</p>
-            <textarea
+<p style={{ ...styles.muted, marginBottom: '10px' }}>Reason (required)</p>            <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               maxLength={255}
@@ -272,8 +271,7 @@ const LoanDetail = () => {
             />
             <div style={{ display: 'flex', gap: '10px' }}>
               <button style={styles.cancelBtn} onClick={() => setShowReject(false)}>Cancel</button>
-              <button style={{ ...styles.rejectBtn, flex: 1 }} onClick={reject} disabled={busy}>Reject</button>
-            </div>
+<button style={{ ...styles.rejectBtn, flex: 1 }} onClick={reject} disabled={busy || reason.trim().length < 3}>Reject</button>            </div>
           </div>
         </div>
       )}
