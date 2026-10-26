@@ -38,14 +38,13 @@ const Register = () => {
     setLoading(true);
 
     try {
-      const { data } = await axios.post('/api/auth/register', {
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        role: formData.role,
-      });
-
-      login(data);
+            await axios.post('/api/auth/register', {
+              name: formData.name,
+              email: formData.email,
+              password: formData.password,
+            });
+            navigate('/login', { state: { notice: 'Account created. An admin must give you access before you can sign in.' } 
+    });
 
       if (data.role === 'admin') {
         navigate('/admin/dashboard');

@@ -10,33 +10,28 @@ const generateToken = (userId, role) => {
 
 exports.registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = req.body.password;
 
-    if (!name || !email || !password) {
+    if (!name || !email || typeof password !== 'string') {
       return res.status(400).json({ message: 'Please fill all required fields' });
     }
-
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
+    }
+    if (password.length < 6 || password.length > 72) {
+      return res.status(400).json({ message: 'Password must be 6 to 72 characters' });
+    }
+    if (await User.findOne({ where: { email } })) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      role: role || 'staff',
-    });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await User.create({ name, email, password: hashedPassword, role: 'staff', posAccess: false });
 
     res.status(201).json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      token: generateToken(user.id, user.role),
+      message: 'Account created. An admin must give you system access before you can sign in.',
     });
   } catch (error) {
     console.error('Register error:', error.message);
@@ -46,16 +41,23 @@ exports.registerUser = async (req, res) => {
 
 exports.loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
 
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
+    const user = email ? await User.findOne({ where: { email } }) : null;
+    if (!user || !user.password) {
       return res.status(400).json({ message: 'Invalid email or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid email or password' });
+    }
+
+    if (user.role === 'staff' && !user.posAccess) {
+      return res.status(403).json({
+        message: 'Your account does not have system access. Ask an admin to enable it.',
+      });
     }
 
     res.json({

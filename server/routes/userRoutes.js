@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const {
-  getUsers, createUser, updateUserRole, updateSalary, getPayroll,
+  getUsers, createUser, updateUserRole, setAccess, updateSalary, getPayroll,
   markPaid, undoPayment, getPaymentHistory, deleteUser,
 } = require('../controllers/userController');
 
@@ -13,6 +13,7 @@ router.get('/payroll', ...adminOnly, getPayroll);
 router.get('/payments', ...adminOnly, getPaymentHistory);
 router.post('/', ...adminOnly, createUser);
 router.put('/:id/role', ...adminOnly, updateUserRole);
+router.put('/:id/access', ...adminOnly, setAccess);
 router.put('/:id/salary', ...adminOnly, updateSalary);
 router.post('/:id/payments', ...adminOnly, markPaid);
 router.delete('/payments/:paymentId', ...adminOnly, undoPayment);

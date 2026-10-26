@@ -115,7 +115,7 @@ exports.createLoan = async (req, res) => {
     if (!Array.isArray(items) || items.length === 0) fail(400, 'Select at least one product');
     if (!Number.isInteger(count) || count < 1 || count > 60) fail(400, 'Installments must be between 1 and 60');
 
-    const customer = await Customer.findByPk(customerId, { transaction: t });
+    const customer = await Customer.findByPk(customerId, { transaction: t, lock: t.LOCK.UPDATE });
     if (!customer) fail(404, 'Customer not found');
 
     const down = toCents(downPayment);
@@ -147,6 +147,27 @@ exports.createLoan = async (req, res) => {
 
     if (down >= totalCents) fail(400, 'Down payment must be less than the total amount');
     const loanCents = totalCents - down;
+
+        // Loan limit (only when one is set): balance + applications not yet checked out + this loan
+    if (customer.loanLimit !== null && customer.loanLimit !== undefined) {
+      const open = await Loan.findAll({
+        attributes: ['loanAmount'],
+        where: { customerId, status: ['PENDING', 'APPROVED'] },
+        transaction: t,
+        raw: true,
+      });
+      const reservedCents = open.reduce((s, l) => s + toCents(l.loanAmount), 0);
+      const limitCents = toCents(customer.loanLimit);
+      const usedCents = toCents(customer.dueAmount) + reservedCents;
+
+      if (usedCents + loanCents > limitCents) {
+        fail(
+          400,
+          `This would exceed the customer's loan limit of ${fromCents(limitCents)}. ` +
+            `Available: ${fromCents(Math.max(0, limitCents - usedCents))}`
+        );
+      }
+    }
 
     const loan = await Loan.create(
       {

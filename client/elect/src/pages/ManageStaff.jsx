@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users, Wallet, Clock, FileText, Search, Calendar, Filter, History, Pencil,
-  MoreHorizontal, Plus, X, Trash2, Lock, CheckCircle2, Undo2,
+  MoreHorizontal, Plus, X, Trash2, Lock, CheckCircle2, Undo2, UserCheck, UserX,
 } from 'lucide-react';
 import axios from '../utils/axiosConfig';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +31,9 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const todayMonth = () => new Date().toLocaleDateString('en-CA').slice(0, 7);
 const monthLabel = (m) =>
   new Date(`${m}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+const hasPos = (p) => p.role !== 'staff' || !!p.posAccess; // can sign in
+const isPayrollOnly = (p) => p.role === 'staff' && !p.posAccess;
 
 /* ---------------- small shared pieces ---------------- */
 const KebabMenu = ({ items }) => {
@@ -76,6 +79,13 @@ const RoleBadge = ({ role }) => {
   return <span style={{ ...styles.roleBadge, backgroundColor: c.bg, color: c.fg }}>{cap(role)}</span>;
 };
 
+const AccessBadge = ({ person }) => {
+  let cfg = { label: 'No system access', bg: '#f1f5f9', fg: '#64748b' };
+  if (person.role !== 'staff') cfg = { label: 'Full access', bg: '#dbeafe', fg: '#1d4ed8' };
+  else if (person.posAccess) cfg = { label: 'POS access', bg: '#dcfce7', fg: '#15803d' };
+  return <span style={{ ...styles.accessBadge, backgroundColor: cfg.bg, color: cfg.fg }}>{cfg.label}</span>;
+};
+
 const StatusBadge = ({ status, payment }) => {
   const map = {
     paid: { bg: '#dcfce7', fg: '#15803d', dot: '#16a34a', label: 'Paid' },
@@ -92,25 +102,57 @@ const StatusBadge = ({ status, payment }) => {
   );
 };
 
+const NameCell = ({ person, self, showAccessHint }) => {
+  const sub = [person.jobTitle, showAccessHint && isPayrollOnly(person) ? 'No system access' : null]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <div style={styles.personCell}>
+      <Avatar person={person} />
+      <div>
+        <div style={styles.nameLine}>
+          <span style={styles.personName}>{person.name}</span>
+          {self && <span style={styles.youBadge}>You</span>}
+        </div>
+        {sub && <div style={styles.subtle}>{sub}</div>}
+      </div>
+    </div>
+  );
+};
+
 /* ---------------- modals ---------------- */
 const AddStaffModal = ({ onClose, onSaved }) => {
   const [form, setForm] = useState({
-    name: '', email: '', password: '', role: 'staff', monthlySalary: '', payDay: '25',
+    name: '', jobTitle: '', role: 'staff', posAccess: false,
+    email: '', password: '', monthlySalary: '', payDay: '25',
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
+  const isStaff = form.role === 'staff';
+  const needsLogin = !isStaff || form.posAccess;
+
   const submit = async (e) => {
     e.preventDefault();
     setError('');
     if (!form.name.trim()) return setError('Enter a name');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return setError('Enter a valid email address');
-    if (form.password.length < 8) return setError('Password must be at least 8 characters');
+    if (needsLogin) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return setError('Enter a valid email address');
+      if (form.password.length < 8) return setError('Password must be at least 8 characters');
+    }
 
     setSaving(true);
     try {
-      await axios.post('/api/users', form);
+      await axios.post('/api/users', {
+        name: form.name,
+        jobTitle: form.jobTitle,
+        role: form.role,
+        posAccess: needsLogin,
+        monthlySalary: form.monthlySalary,
+        payDay: form.payDay,
+        ...(needsLogin ? { email: form.email, password: form.password } : {}),
+      });
       onSaved();
       onClose();
     } catch (err) {
@@ -132,11 +174,8 @@ const AddStaffModal = ({ onClose, onSaved }) => {
         <label style={styles.label}>Full name *</label>
         <input value={form.name} onChange={set('name')} style={styles.input} maxLength={100} autoFocus />
 
-        <label style={styles.label}>Email *</label>
-        <input type="email" value={form.email} onChange={set('email')} style={styles.input} maxLength={100} />
-
-        <label style={styles.label}>Temporary password * (min 8 characters)</label>
-        <input type="password" value={form.password} onChange={set('password')} style={styles.input} maxLength={72} />
+        <label style={styles.label}>Job title (optional)</label>
+        <input value={form.jobTitle} onChange={set('jobTitle')} style={styles.input} maxLength={100} placeholder="e.g. Cashier, Stock handler, Driver" />
 
         <label style={styles.label}>Role</label>
         <select value={form.role} onChange={set('role')} style={styles.input}>
@@ -144,6 +183,40 @@ const AddStaffModal = ({ onClose, onSaved }) => {
           <option value="manager">Manager</option>
           <option value="admin">Admin</option>
         </select>
+
+        {isStaff ? (
+          <>
+            <label style={styles.label}>System access</label>
+            <div style={styles.radioRow}>
+              <div
+                style={{ ...styles.radioCard, ...(!form.posAccess ? styles.radioActive : {}) }}
+                onClick={() => setForm({ ...form, posAccess: false })}
+              >
+                <strong style={{ fontSize: '13px' }}>No system access</strong>
+                <span style={styles.radioText}>Payroll only. Works in the shop but doesn't sign in.</span>
+              </div>
+              <div
+                style={{ ...styles.radioCard, ...(form.posAccess ? styles.radioActive : {}) }}
+                onClick={() => setForm({ ...form, posAccess: true })}
+              >
+                <strong style={{ fontSize: '13px' }}>POS access</strong>
+                <span style={styles.radioText}>Can sign in and use the POS.</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p style={styles.hint}>Admins and managers always sign in, so they need login details.</p>
+        )}
+
+        {needsLogin && (
+          <>
+            <label style={styles.label}>Email *</label>
+            <input type="email" value={form.email} onChange={set('email')} style={styles.input} maxLength={100} />
+
+            <label style={styles.label}>Temporary password * (min 8 characters)</label>
+            <input type="password" value={form.password} onChange={set('password')} style={styles.input} maxLength={72} />
+          </>
+        )}
 
         <div style={{ display: 'flex', gap: '12px' }}>
           <div style={{ flex: 1 }}>
@@ -164,9 +237,75 @@ const AddStaffModal = ({ onClose, onSaved }) => {
   );
 };
 
+const GrantAccessModal = ({ person, onClose, onSaved }) => {
+  const needsEmail = !person.email;
+  const needsPassword = !person.hasLogin;
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (needsEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError('Enter a valid email address');
+    if (needsPassword && password.length < 8) return setError('Password must be at least 8 characters');
+
+    setSaving(true);
+    try {
+      await axios.put(`/api/users/${person.id}/access`, {
+        posAccess: true,
+        ...(needsEmail ? { email } : {}),
+        ...(needsPassword ? { password } : {}),
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to give access');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={styles.overlay} onClick={onClose}>
+      <form style={styles.modal} onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <div style={styles.modalHeader}>
+          <h3 style={styles.modalTitle}>Give POS access: {person.name}</h3>
+          <button type="button" style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
+        </div>
+        {error && <p style={styles.errorText}>{error}</p>}
+
+        <p style={styles.hint}>
+          {person.name} will be able to sign in and use the POS. They stay on payroll.
+          {!needsEmail && !needsPassword && ' Their existing login details will be used.'}
+        </p>
+
+        {needsEmail && (
+          <>
+            <label style={styles.label}>Email *</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} maxLength={100} autoFocus />
+          </>
+        )}
+        {needsPassword && (
+          <>
+            <label style={styles.label}>Temporary password * (min 8 characters)</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} maxLength={72} />
+          </>
+        )}
+
+        <button type="submit" style={styles.submitBtn} disabled={saving}>
+          {saving ? 'Saving...' : 'Give POS access'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 const EditSalaryModal = ({ person, onClose, onSaved }) => {
   const [salary, setSalary] = useState(String(parseFloat(person.monthlySalary) || 0));
   const [payDay, setPayDay] = useState(String(person.payDay || 25));
+  const [jobTitle, setJobTitle] = useState(person.jobTitle || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -179,7 +318,7 @@ const EditSalaryModal = ({ person, onClose, onSaved }) => {
 
     setSaving(true);
     try {
-      await axios.put(`/api/users/${person.id}/salary`, { monthlySalary: salary, payDay: d });
+      await axios.put(`/api/users/${person.id}/salary`, { monthlySalary: salary, payDay: d, jobTitle });
       onSaved();
       onClose();
     } catch (err) {
@@ -198,6 +337,9 @@ const EditSalaryModal = ({ person, onClose, onSaved }) => {
         </div>
         {error && <p style={styles.errorText}>{error}</p>}
 
+        <label style={styles.label}>Job title</label>
+        <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} style={styles.input} maxLength={100} placeholder="e.g. Cashier" />
+
         <label style={styles.label}>Monthly salary (LKR)</label>
         <input type="number" min="0" step="0.01" value={salary} onChange={(e) => setSalary(e.target.value)} style={styles.input} autoFocus />
 
@@ -210,7 +352,7 @@ const EditSalaryModal = ({ person, onClose, onSaved }) => {
         </p>
 
         <button type="submit" style={styles.submitBtn} disabled={saving}>
-          {saving ? 'Saving...' : 'Save salary'}
+          {saving ? 'Saving...' : 'Save'}
         </button>
       </form>
     </div>
@@ -291,6 +433,7 @@ const ManageStaff = () => {
 
   const [showAdd, setShowAdd] = useState(false);
   const [salaryFor, setSalaryFor] = useState(null);
+  const [grantFor, setGrantFor] = useState(null);
   const [history, setHistory] = useState(null); // { person } where person may be null (everyone)
   const [confirm, setConfirm] = useState(null);
 
@@ -340,6 +483,9 @@ const ManageStaff = () => {
     );
   }, [payroll.rows, search, statusFilter]);
 
+  const posCount = users.filter((u) => u.role === 'staff' && u.posAccess).length;
+  const payrollOnlyCount = users.filter(isPayrollOnly).length;
+
   const runConfirm = async () => {
     const c = confirm;
     setConfirm(null);
@@ -349,6 +495,7 @@ const ManageStaff = () => {
       if (c.type === 'remove') await axios.delete(`/api/users/${c.person.id}`);
       if (c.type === 'pay') await axios.post(`/api/users/${c.person.id}/payments`, { month });
       if (c.type === 'undo') await axios.delete(`/api/users/payments/${c.person.payment.id}`);
+      if (c.type === 'revoke') await axios.put(`/api/users/${c.person.id}/access`, { posAccess: false });
       refresh();
     } catch (err) {
       setActionError(err.response?.data?.message || 'Action failed');
@@ -364,6 +511,14 @@ const ManageStaff = () => {
     if (type === 'remove') {
       return { title: 'Remove staff member', message: `Remove ${person.name} from the system? This cannot be undone.`, label: 'Remove', danger: true };
     }
+    if (type === 'revoke') {
+      return {
+        title: 'Remove POS access',
+        message: `${person.name} will no longer be able to sign in or use the POS, and anyone signed in is blocked straight away. They stay on payroll.`,
+        label: 'Remove access',
+        danger: true,
+      };
+    }
     if (type === 'pay') {
       return {
         title: 'Mark salary as paid',
@@ -378,6 +533,16 @@ const ManageStaff = () => {
       label: 'Undo payment',
       danger: true,
     };
+  };
+
+  // access actions shared by both tabs
+  const accessItems = (p) => {
+    const self = isSelf(p.id);
+    const staff = p.role === 'staff';
+    return [
+      { label: 'Give POS access', icon: UserCheck, hidden: self || !staff || p.posAccess, onClick: () => setGrantFor(p) },
+      { label: 'Remove POS access', icon: UserX, danger: true, hidden: self || !staff || !p.posAccess, onClick: () => setConfirm({ type: 'revoke', person: p }) },
+    ];
   };
 
   const totals = payroll.totals;
@@ -441,61 +606,63 @@ const ManageStaff = () => {
           usersLoading ? (
             <p style={styles.muted}>Loading...</p>
           ) : (
-            <table style={styles.table}>
-              <thead>
-                <tr style={styles.theadRow}>
-                  <th style={styles.th}>Staff member</th>
-                  <th style={styles.th}>Email</th>
-                  <th style={styles.th}>Role</th>
-                  <th style={styles.th}>Joined</th>
-                  <th style={styles.th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => {
-                  const self = isSelf(u.id);
-                  return (
-                    <tr key={u.id} style={styles.row}>
-                      <td style={styles.td}>
-                        <div style={styles.personCell}>
-                          <Avatar person={u} />
-                          <span style={styles.personName}>{u.name}</span>
-                          {self && <span style={styles.youBadge}>You</span>}
-                        </div>
-                      </td>
-                      <td style={styles.td}>{u.email}</td>
-                      <td style={styles.td}>
-                        <select
-                          value={u.role}
-                          disabled={self}
-                          title={self ? "You can't change your own role" : undefined}
-                          onChange={(e) => setConfirm({ type: 'role', person: u, newRole: e.target.value })}
-                          style={styles.roleSelect}
-                        >
-                          <option value="staff">Staff</option>
-                          <option value="manager">Manager</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </td>
-                      <td style={styles.td}>{new Date(u.createdAt).toLocaleDateString()}</td>
-                      <td style={styles.td}>
-                        <div style={styles.actionCell}>
-                          <button style={styles.editBtn} onClick={() => setSalaryFor(u)}>
-                            <Pencil size={15} /> Edit salary
-                          </button>
-                          <KebabMenu
-                            items={[
-                              { label: 'Payment history', icon: History, onClick: () => setHistory({ person: u }) },
-                              { label: 'Remove staff', icon: Trash2, danger: true, hidden: self, onClick: () => setConfirm({ type: 'remove', person: u }) },
-                            ]}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <>
+              <p style={styles.summaryLine}>
+                {posCount} staff can use the POS · {payrollOnlyCount} payroll-only (no system access)
+              </p>
+              <table style={styles.table}>
+                <thead>
+                  <tr style={styles.theadRow}>
+                    <th style={styles.th}>Staff member</th>
+                    <th style={styles.th}>Email</th>
+                    <th style={styles.th}>Role</th>
+                    <th style={styles.th}>Access</th>
+                    <th style={styles.th}>Joined</th>
+                    <th style={styles.th}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => {
+                    const self = isSelf(u.id);
+                    return (
+                      <tr key={u.id} style={styles.row}>
+                        <td style={styles.td}><NameCell person={u} self={self} /></td>
+                        <td style={styles.td}>{u.email || <span style={styles.dash}>-</span>}</td>
+                        <td style={styles.td}>
+                          <select
+                            value={u.role}
+                            disabled={self}
+                            title={self ? "You can't change your own role" : undefined}
+                            onChange={(e) => setConfirm({ type: 'role', person: u, newRole: e.target.value })}
+                            style={styles.roleSelect}
+                          >
+                            <option value="staff">Staff</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        </td>
+                        <td style={styles.td}><AccessBadge person={u} /></td>
+                        <td style={styles.td}>{new Date(u.createdAt).toLocaleDateString()}</td>
+                        <td style={styles.td}>
+                          <div style={styles.actionCell}>
+                            <button style={styles.editBtn} onClick={() => setSalaryFor(u)}>
+                              <Pencil size={15} /> Edit salary
+                            </button>
+                            <KebabMenu
+                              items={[
+                                ...accessItems(u),
+                                { label: 'Payment history', icon: History, onClick: () => setHistory({ person: u }) },
+                                { label: 'Remove staff', icon: Trash2, danger: true, hidden: self, onClick: () => setConfirm({ type: 'remove', person: u }) },
+                              ]}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </>
           )
         )}
 
@@ -566,13 +733,7 @@ const ManageStaff = () => {
                       const differs = r.payment && Number(r.payment.amount) !== Number(r.monthlySalary);
                       return (
                         <tr key={r.id} style={styles.row}>
-                          <td style={styles.td}>
-                            <div style={styles.personCell}>
-                              <Avatar person={r} />
-                              <span style={styles.personName}>{r.name}</span>
-                              {self && <span style={styles.youBadge}>You</span>}
-                            </div>
-                          </td>
+                          <td style={styles.td}><NameCell person={r} self={self} showAccessHint /></td>
                           <td style={styles.td}><RoleBadge role={r.role} /></td>
                           <td style={styles.td}>
                             <div style={{ fontWeight: 600 }}>{lkr(r.monthlySalary)}</div>
@@ -589,6 +750,7 @@ const ManageStaff = () => {
                                 items={[
                                   { label: 'Mark as paid', icon: CheckCircle2, hidden: r.status !== 'pending', onClick: () => setConfirm({ type: 'pay', person: r }) },
                                   { label: 'Undo payment', icon: Undo2, danger: true, hidden: r.status !== 'paid', onClick: () => setConfirm({ type: 'undo', person: r }) },
+                                  ...accessItems(r),
                                   { label: 'Payment history', icon: History, onClick: () => setHistory({ person: r }) },
                                   { label: 'Remove staff', icon: Trash2, danger: true, hidden: self, onClick: () => setConfirm({ type: 'remove', person: r }) },
                                 ]}
@@ -612,6 +774,7 @@ const ManageStaff = () => {
 
       {showAdd && <AddStaffModal onClose={() => setShowAdd(false)} onSaved={refresh} />}
       {salaryFor && <EditSalaryModal person={salaryFor} onClose={() => setSalaryFor(null)} onSaved={refresh} />}
+      {grantFor && <GrantAccessModal person={grantFor} onClose={() => setGrantFor(null)} onSaved={refresh} />}
       {history && <HistoryModal person={history.person} onClose={() => setHistory(null)} />}
 
       {confirm && (
@@ -654,6 +817,7 @@ const styles = {
     fontSize: '16px', fontWeight: 500, cursor: 'pointer', marginBottom: '-1px',
   },
   tabActive: { color: '#2563eb', borderBottom: '3px solid #2563eb', fontWeight: 600 },
+  summaryLine: { fontSize: '13px', color: '#64748b', margin: '0 0 12px' },
 
   filterRow: { display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap' },
   field: {
@@ -672,8 +836,10 @@ const styles = {
   th: { textAlign: 'left', padding: '13px 14px', fontSize: '13px', fontWeight: 600, color: '#334155' },
   row: { borderTop: '1px solid #eef2f7' },
   td: { padding: '14px', verticalAlign: 'middle', color: '#0f172a' },
+  dash: { color: '#94a3b8' },
 
   personCell: { display: 'flex', alignItems: 'center', gap: '12px' },
+  nameLine: { display: 'flex', alignItems: 'center', gap: '8px' },
   avatar: {
     width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center',
     justifyContent: 'center', fontWeight: 700, fontSize: '15px', flexShrink: 0,
@@ -681,6 +847,7 @@ const styles = {
   personName: { fontWeight: 600, fontSize: '15px' },
   youBadge: { padding: '2px 10px', borderRadius: '6px', backgroundColor: '#dbeafe', color: '#1d4ed8', fontSize: '12px', fontWeight: 500 },
   roleBadge: { padding: '5px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: 500 },
+  accessBadge: { padding: '4px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 500, whiteSpace: 'nowrap' },
   roleSelect: { padding: '7px 10px', borderRadius: '8px', border: '1px solid #dbe1ea', fontSize: '13px', backgroundColor: '#fff' },
   statusBadge: {
     display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '5px 14px',
@@ -700,7 +867,7 @@ const styles = {
   },
   backdrop: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 },
   menu: {
-    position: 'absolute', top: '42px', right: 0, zIndex: 41, minWidth: '170px', backgroundColor: '#fff',
+    position: 'absolute', top: '42px', right: 0, zIndex: 41, minWidth: '190px', backgroundColor: '#fff',
     border: '1px solid #e8ecf3', borderRadius: '10px', boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: '4px',
   },
   menuItem: {
@@ -722,7 +889,7 @@ const styles = {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
   },
-  modal: { backgroundColor: '#fff', borderRadius: '14px', padding: '22px', width: '420px', maxHeight: '90vh', overflowY: 'auto' },
+  modal: { backgroundColor: '#fff', borderRadius: '14px', padding: '22px', width: '440px', maxHeight: '90vh', overflowY: 'auto' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' },
   modalTitle: { margin: 0, fontSize: '18px' },
   closeBtn: {
@@ -734,6 +901,13 @@ const styles = {
     width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #dbe1ea',
     boxSizing: 'border-box', fontSize: '14px', marginBottom: '10px',
   },
+  radioRow: { display: 'flex', gap: '10px', marginBottom: '12px' },
+  radioCard: {
+    flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', padding: '10px 12px',
+    border: '1px solid #dbe1ea', borderRadius: '8px', cursor: 'pointer', backgroundColor: '#fff',
+  },
+  radioActive: { border: '2px solid #2563eb', backgroundColor: '#f5f8ff' },
+  radioText: { fontSize: '11px', color: '#64748b' },
   submitBtn: {
     width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none',
     borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer',

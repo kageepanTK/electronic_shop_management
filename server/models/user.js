@@ -13,12 +13,12 @@ const User = sequelize.define('User', {
   },
   email: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
     unique: true,
   },
   password: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   role: {
     type: DataTypes.ENUM('admin', 'manager', 'staff'),
@@ -36,6 +36,15 @@ const User = sequelize.define('User', {
      type: DataTypes.INTEGER, 
      allowNull: false, defaultValue: 25 
     },
+    jobTitle: { 
+      type: DataTypes.STRING(100), 
+      allowNull: true 
+    },
+  posAccess: { 
+    type: DataTypes.BOOLEAN, 
+    allowNull: false, 
+    defaultValue: true 
+  },
 });
 
 module.exports = User;

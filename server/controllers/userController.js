@@ -5,11 +5,20 @@ const SalaryPayment = require('../models/SalaryPayment');
 
 const ROLES = ['admin', 'manager', 'staff'];
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const toCents = (v) => Math.round(Number(v) * 100);
 const fromCents = (c) => (c / 100).toFixed(2);
 const monthOf = (d) => new Date(d).toLocaleDateString('en-CA').slice(0, 7); // YYYY-MM
 const currentMonth = () => monthOf(new Date());
+
+// Removes the password hash but tells the UI whether the person can sign in
+const publicUser = (u) => {
+  const json = u.toJSON();
+  json.hasLogin = !!json.password;
+  delete json.password;
+  return json;
+};
 
 const parseSalary = (value, required) => {
   if (value === undefined || value === null || value === '') {
@@ -30,53 +39,61 @@ const parsePayDay = (value) => {
 // GET /api/users
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.findAll({ attributes: { exclude: ['password'] }, order: [['name', 'ASC']] });
-    res.json(users);
+    const users = await User.findAll({ order: [['name', 'ASC']] });
+    res.json(users.map(publicUser));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// POST /api/users  (admin creates a team member)
+// POST /api/users  (admin adds a team member; staff may be payroll-only)
 exports.createUser = async (req, res) => {
   try {
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
-    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    const password = req.body.password;
     const role = req.body.role || 'staff';
+    const jobTitle = typeof req.body.jobTitle === 'string' ? req.body.jobTitle.trim().slice(0, 100) : '';
+    const wantsPos = req.body.posAccess === true || req.body.posAccess === 'true';
 
     if (!name || name.length > 100) return res.status(400).json({ message: 'Enter a name (up to 100 characters)' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 100) {
-      return res.status(400).json({ message: 'Enter a valid email address' });
-    }
-    if (typeof password !== 'string' || password.length < 8 || password.length > 72) {
-      return res.status(400).json({ message: 'Password must be 8 to 72 characters' });
-    }
     if (!ROLES.includes(role)) return res.status(400).json({ message: 'Invalid role' });
+
+    // Admins and managers always sign in. Staff sign in only if given POS access.
+    const needsLogin = role !== 'staff' || wantsPos;
+
+    let email = null;
+    let hashed = null;
+    if (needsLogin) {
+      email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+      const password = req.body.password;
+      if (!EMAIL_RE.test(email) || email.length > 100) {
+        return res.status(400).json({ message: 'Enter a valid email address' });
+      }
+      if (typeof password !== 'string' || password.length < 8 || password.length > 72) {
+        return res.status(400).json({ message: 'Password must be 8 to 72 characters' });
+      }
+      if (await User.findOne({ where: { email } })) {
+        return res.status(400).json({ message: 'A user with this email already exists' });
+      }
+      hashed = await bcrypt.hash(password, 10);
+    }
 
     const sal = parseSalary(req.body.monthlySalary, false);
     if (sal.error) return res.status(400).json({ message: sal.error });
     const pd = parsePayDay(req.body.payDay);
     if (pd.error) return res.status(400).json({ message: pd.error });
 
-    if (await User.findOne({ where: { email } })) {
-      return res.status(400).json({ message: 'A user with this email already exists' });
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({
       name,
       email,
       password: hashed,
       role,
+      jobTitle: jobTitle || null,
+      posAccess: needsLogin,
       monthlySalary: fromCents(sal.cents),
       payDay: pd.day,
     });
 
-    res.status(201).json({
-      id: user.id, name: user.name, email: user.email, role: user.role,
-      monthlySalary: user.monthlySalary, payDay: user.payDay, createdAt: user.createdAt,
-    });
+    res.status(201).json(publicUser(user));
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ message: 'A user with this email already exists' });
@@ -95,7 +112,14 @@ exports.updateUserRole = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (user.id === req.user.id) return res.status(400).json({ message: 'You cannot change your own role' });
 
+    if (role !== 'staff' && (!user.email || !user.password)) {
+      return res.status(400).json({
+        message: 'Give this person POS access (login details) first, then change their role.',
+      });
+    }
+
     user.role = role;
+    if (role !== 'staff') user.posAccess = true;
     await user.save();
     res.json({ id: user.id, name: user.name, role: user.role });
   } catch (error) {
@@ -103,7 +127,53 @@ exports.updateUserRole = async (req, res) => {
   }
 };
 
-// PUT /api/users/:id/salary
+// PUT /api/users/:id/access   body: { posAccess: boolean, email?, password? }
+exports.setAccess = async (req, res) => {
+  try {
+    if (typeof req.body.posAccess !== 'boolean') {
+      return res.status(400).json({ message: 'posAccess must be true or false' });
+    }
+
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.id === req.user.id) return res.status(400).json({ message: 'You cannot change your own access' });
+    if (user.role !== 'staff') {
+      return res.status(400).json({ message: 'Admins and managers always have system access' });
+    }
+
+    if (req.body.posAccess) {
+      // Someone who never had a login needs an email and a temporary password
+      if (!user.email) {
+        const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+        if (!EMAIL_RE.test(email) || email.length > 100) {
+          return res.status(400).json({ message: 'Enter a valid email address' });
+        }
+        if (await User.findOne({ where: { email, id: { [Op.ne]: user.id } } })) {
+          return res.status(400).json({ message: 'A user with this email already exists' });
+        }
+        user.email = email;
+      }
+      if (!user.password) {
+        const password = req.body.password;
+        if (typeof password !== 'string' || password.length < 8 || password.length > 72) {
+          return res.status(400).json({ message: 'Password must be 8 to 72 characters' });
+        }
+        user.password = await bcrypt.hash(password, 10);
+      }
+    }
+
+    user.posAccess = req.body.posAccess;
+    await user.save();
+    res.json(publicUser(user));
+  } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ message: 'A user with this email already exists' });
+    }
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// PUT /api/users/:id/salary   body: { monthlySalary, payDay, jobTitle? }
 exports.updateSalary = async (req, res) => {
   try {
     const sal = parseSalary(req.body.monthlySalary, true);
@@ -116,8 +186,11 @@ exports.updateSalary = async (req, res) => {
 
     user.monthlySalary = fromCents(sal.cents);
     user.payDay = pd.day;
+    if (typeof req.body.jobTitle === 'string') {
+      user.jobTitle = req.body.jobTitle.trim().slice(0, 100) || null;
+    }
     await user.save();
-    res.json({ id: user.id, monthlySalary: user.monthlySalary, payDay: user.payDay });
+    res.json({ id: user.id, monthlySalary: user.monthlySalary, payDay: user.payDay, jobTitle: user.jobTitle });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -135,7 +208,6 @@ exports.getPayroll = async (req, res) => {
     const [users, payments, teamMembers] = await Promise.all([
       User.findAll({
         where: { createdAt: { [Op.lt]: startOfNextMonth } }, // only people who had joined by then
-        attributes: { exclude: ['password'] },
         order: [['name', 'ASC']],
       }),
       SalaryPayment.findAll({ where: { payMonth: month } }),
@@ -162,6 +234,9 @@ exports.getPayroll = async (req, res) => {
         name: u.name,
         email: u.email,
         role: u.role,
+        jobTitle: u.jobTitle,
+        posAccess: u.posAccess,
+        hasLogin: !!u.password,
         monthlySalary: u.monthlySalary,
         payDay: u.payDay,
         status,
